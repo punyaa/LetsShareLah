@@ -1,9 +1,6 @@
-export const ALLOWED_CATEGORIES = new Set([
-  "Outdoor & travel",
-  "Events & parties",
-  "Tools & DIY",
-  "Baby & kids"
-]);
+import { CATEGORY_DISPLAY } from "./catalog.mjs";
+
+export const ALLOWED_CATEGORIES = new Set(CATEGORY_DISPLAY.map((category) => category.name));
 
 export function validateItem(input) {
   const item = {

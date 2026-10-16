@@ -1,22 +1,25 @@
 # LetsShareLah
 
-**Turn an unused item into a clear rental listing.** LetsShareLah helps someone in Singapore estimate rental prices, write an item description, and prepare a handover checklist. The current prototype runs locally and can use an open-weight model through Ollama. A built-in sample draft mode lets you explore the interface without installing a model.
+**Rent more, own less.** LetsShareLah is a Singapore neighbourhood rental marketplace prototype. Browse items, search by category or keyword, filter by neighbourhood, and see approximate distances. Owners can create a listing with private, local AI writing help.
 
-> Status: early prototype. It does not publish listings, take bookings, process payments, or provide insurance or escrow. Price suggestions are simple estimates; the owner decides the final price.
+> Status: local demo. The catalog begins with fictional sample listings. Owner listings are published only to the running server's memory and disappear when it restarts. Demo role profiles are **not real accounts**. There are no bookings, messages, payments, insurance or escrow. Price suggestions are estimates, not market data.
 
 ## Why build it?
 
-People often own equipment they use only occasionally. Listing it for rent can create side income, but deciding on a price and writing a trustworthy listing takes time. LetsShareLah makes that first step easier. A local model keeps item details on the user's computer and avoids per-listing AI API charges.
+People often own equipment they use only occasionally. Renting nearby items can save money and space, while owners can make side income. LetsShareLah makes discovery straightforward and helps owners write a clear first listing. A local model avoids per-listing AI API charges and keeps draft details on the user's computer.
 
 ## What works today
 
-- Enter an item, condition, replacement value, and nearby MRT station or neighbourhood.
-- Receive daily, weekly, monthly, and deposit suggestions in SGD.
-- Generate a listing title, description, and three-step handover checklist with a local Ollama model.
-- Preview the workflow with a sample draft when no model is installed.
+- Browse a fictional Singapore rental catalog by category, keyword and neighbourhood.
+- Optionally use browser location permission to see demo items within 12 km; coordinates stay in the browser.
+- Open item detail cards showing condition, pickup neighbourhood, daily rate and owner name.
+- Enter renter or owner demo mode without creating an account.
+- As an owner, enter an item, condition, replacement value and pickup neighbourhood, then edit and publish a demo listing.
+- Receive daily, weekly, monthly and deposit suggestions in SGD. A local Ollama model drafts the title and description; the handover checklist uses a standard, deterministic template. The UI selects a local model automatically, preferring Qwen3.5 0.8B when installed.
+- Fall back to a clearly labelled template draft if local AI is unavailable.
 - Run without cloud accounts, API keys, or application dependencies.
 
-The AI writes the listing. A deterministic pricing formula supplies transparent starting estimates and prevents a model response from silently changing prices. The formula is a prototype assumption, not market data.
+AI drafts the listing copy for owner review. A deterministic pricing formula supplies transparent starting estimates and prevents a model response from silently changing prices. Owners can edit the daily rent before publishing. The formula is a prototype assumption, not market data.
 
 ## Quick start
 
@@ -28,16 +31,16 @@ cd LetsShareLah
 npm start
 ```
 
-Open <http://localhost:3000> and tick **Preview with a sample draft instead of AI** to test immediately.
+Open <http://localhost:3000>. Browsing and the owner demo flow work without installing a model.
 
 For the local AI flow, install [Ollama](https://ollama.com/) and an open-weight model, then start the app:
 
 ```bash
-ollama pull llama3.2
+ollama pull qwen3.5:0.8b
 npm start
 ```
 
-The browser lists installed Ollama models so you can choose one. The default is `llama3.2:latest` if no model is selected. Set `OLLAMA_MODEL` if your setup differs. No API key is needed. For privacy, the server only connects to Ollama on this computer.
+The UI does not expose a model picker to renters. The server uses `OLLAMA_MODEL` if set, otherwise prefers an installed `qwen3.5:0.8b`, then another installed local model. If model generation fails, it returns a template draft and labels it as such. No API key is needed. The server only connects to Ollama on this computer. [Qwen3.5 0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) publishes its weights under Apache 2.0; model licenses differ, so check the exact model you choose.
 
 ## Development
 
@@ -52,8 +55,10 @@ The local server exposes:
 | --- | --- |
 | `GET /api/health` | Basic server health |
 | `GET /api/models` | List installed local Ollama models |
+| `GET /api/catalog` | Get categories, neighbourhood coordinates and demo listings |
 | `POST /api/listings/draft` | Generate prices and a local AI listing |
 | `POST /api/listings/draft?demo=1` | Generate a sample listing without Ollama |
+| `POST /api/listings` | Publish a validated listing to server memory |
 
 Example request:
 

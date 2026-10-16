@@ -11,20 +11,26 @@ test("lists installed local models", async () => {
 });
 
 test("keeps calculated prices when the model writes listing copy", async () => {
+  let requestBody;
   const listing = await generateWithOllama(item, prices, {
     model: "llama3.2:latest",
-    fetchImpl: async () => ({
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return ({
       ok: true,
-      json: async () => ({ response: JSON.stringify({ title: "Tent for rent", description: "Ready for a trip.", handoverChecklist: ["Inspect", "Photograph", "Return on time"], prices: { daily: 1 } }) })
-    })
+      json: async () => ({ response: JSON.stringify({ title: "Tent for rent", description: "Ready for a trip.", prices: { daily: 1 } }) })
+      });
+    }
   });
   assert.equal(listing.prices.daily, 9);
   assert.equal(listing.handoverChecklist.length, 3);
+  assert.equal(requestBody.think, false);
+  assert.deepEqual(requestBody.format.required, ["title", "description"]);
 });
 
 test("rejects malformed model output", async () => {
   await assert.rejects(generateWithOllama(item, prices, {
-    fetchImpl: async () => ({ ok: true, json: async () => ({ response: JSON.stringify({ title: "Tent", description: "Ready", handoverChecklist: [] }) }) })
+    fetchImpl: async () => ({ ok: true, json: async () => ({ response: JSON.stringify({ title: "Tent", description: "" }) }) })
   }), /invalid listing/);
 });
 

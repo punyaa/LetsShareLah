@@ -2,11 +2,14 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { generateWithOllama, listOllamaModels } from "./ai/ollama.mjs";
 import { draftListing, suggestedPrices, validateItem } from "./core/listing.mjs";
+import { AREAS, CATEGORY_DISPLAY, SEED_LISTINGS, validatePublishedListing } from "./core/catalog.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 const port = Number(process.env.PORT ?? 3000);
+const publishedListings = [];
 
 async function readJson(request) {
   let body = "";
@@ -34,15 +37,36 @@ const server = createServer(async (request, response) => {
       return sendJson(response, 200, { available: false, models: [] });
     }
   }
+  if (request.method === "GET" && url.pathname === "/api/catalog") {
+    return sendJson(response, 200, { areas: AREAS, categories: CATEGORY_DISPLAY, listings: [...publishedListings, ...SEED_LISTINGS] });
+  }
+  if (request.method === "POST" && url.pathname === "/api/listings") {
+    try {
+      const listing = validatePublishedListing(await readJson(request));
+      const category = CATEGORY_DISPLAY.find((entry) => entry.name === listing.category);
+      const published = { ...listing, id: randomUUID(), icon: category.icon, featured: false, sample: false };
+      publishedListings.unshift(published);
+      return sendJson(response, 201, { listing: published });
+    } catch (error) {
+      return sendJson(response, 400, { error: error instanceof Error ? error.message : "Could not publish listing." });
+    }
+  }
   if (request.method === "POST" && url.pathname === "/api/listings/draft") {
     try {
       const input = await readJson(request);
       const item = validateItem(input);
       const prices = suggestedPrices(item);
       const demo = url.searchParams.get("demo") === "1";
-      const model = typeof input.model === "string" ? input.model : undefined;
-      const listing = demo ? draftListing(item, prices) : await generateWithOllama(item, prices, { model });
-      return sendJson(response, 200, { item, listing, mode: demo ? "demo" : "local-ai", ...(demo ? {} : { model: model ?? process.env.OLLAMA_MODEL ?? "llama3.2:latest" }) });
+      if (demo) return sendJson(response, 200, { item, listing: draftListing(item, prices), mode: "demo" });
+      try {
+        const installed = await listOllamaModels();
+        const model = process.env.OLLAMA_MODEL ?? installed.find((name) => name.startsWith("qwen3.5:0.8b")) ?? installed[0];
+        if (!model) throw new Error("No local model installed.");
+        const listing = await generateWithOllama(item, prices, { model });
+        return sendJson(response, 200, { item, listing, mode: "local-ai", model });
+      } catch {
+        return sendJson(response, 200, { item, listing: draftListing(item, prices), mode: "demo" });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not draft listing.";
       const status = error instanceof SyntaxError || message.includes("must") || message.includes("Choose") || message.includes("Enter") ? 400 : 502;

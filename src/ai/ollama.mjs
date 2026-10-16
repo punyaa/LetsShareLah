@@ -1,4 +1,6 @@
-const systemPrompt = `You write clear, accurate Singapore peer-to-peer rental listings. Return only a JSON object with keys title, description, handoverChecklist. handoverChecklist must be an array of exactly three short strings. Never invent item features, brand, warranties, or guarantees. Do not include exact addresses. Prices are calculated by the app and must not be changed. Avoid claims about escrow or insurance.`;
+import { draftListing } from "../core/listing.mjs";
+
+const systemPrompt = `You write clear, accurate Singapore peer-to-peer rental listings. Return only a JSON object with keys title and description. Never invent item features, brand, warranties, or guarantees. Describe only the item details supplied. Do not include exact addresses. Prices are calculated by the app and must not be changed. Avoid claims about escrow or insurance.`;
 
 function ollamaUrl(path, baseUrl) {
   const url = new URL(baseUrl ?? process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434");
@@ -28,7 +30,16 @@ export async function generateWithOllama(item, prices, options = {}) {
     body: JSON.stringify({
       model,
       stream: false,
-      format: "json",
+      format: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" }
+        },
+        required: ["title", "description"]
+      },
+      think: false,
+      options: { num_predict: 300, temperature: 0.2 },
       prompt: `${systemPrompt}\n\nItem: ${JSON.stringify(item)}\nSuggested prices in SGD: ${JSON.stringify(prices)}`
     }),
     signal: AbortSignal.timeout(30000)
@@ -36,13 +47,13 @@ export async function generateWithOllama(item, prices, options = {}) {
   if (!response.ok) throw new Error(`Local AI model returned HTTP ${response.status}. Check that the model is installed.`);
   const payload = await response.json();
   const parsed = JSON.parse(payload.response);
-  if (typeof parsed.title !== "string" || !parsed.title.trim() || typeof parsed.description !== "string" || !parsed.description.trim() || !Array.isArray(parsed.handoverChecklist) || parsed.handoverChecklist.length !== 3 || parsed.handoverChecklist.some((value) => typeof value !== "string" || !value.trim())) {
+  if (typeof parsed.title !== "string" || !parsed.title.trim() || typeof parsed.description !== "string" || !parsed.description.trim()) {
     throw new Error("Local AI model returned an invalid listing.");
   }
   return {
     title: parsed.title.trim().slice(0, 120),
     description: parsed.description.trim().slice(0, 1200),
-    handoverChecklist: parsed.handoverChecklist.map((value) => value.trim().slice(0, 160)),
+    handoverChecklist: draftListing(item, prices).handoverChecklist,
     prices
   };
 }
