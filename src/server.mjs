@@ -2,14 +2,21 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { generateWithOllama, listOllamaModels } from "./ai/ollama.mjs";
 import { draftListing, suggestedPrices, validateItem } from "./core/listing.mjs";
 import { AREAS, CATEGORY_DISPLAY, SEED_LISTINGS, validatePublishedListing } from "./core/catalog.mjs";
+import { createMemoryStore, createMongoStore } from "./store.mjs";
+import { ownerAccessAllowed } from "./owner-access.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 const port = Number(process.env.PORT ?? 3000);
-const publishedListings = [];
+const production = process.env.NODE_ENV === "production";
+const ownerAccessCode = process.env.OWNER_ACCESS_CODE ?? "";
+if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("PORT must be a valid port number.");
+if (production && !process.env.MONGODB_URI) throw new Error("Production requires MONGODB_URI so listings survive restarts.");
+if (production && !ownerAccessCode) throw new Error("Production requires OWNER_ACCESS_CODE to prevent anonymous publishing.");
+if (ownerAccessCode && ownerAccessCode.length < 16) throw new Error("OWNER_ACCESS_CODE must be at least 16 characters.");
+const store = process.env.MONGODB_URI ? await createMongoStore(process.env.MONGODB_URI, process.env.MONGODB_DB) : createMemoryStore();
 
 async function readJson(request) {
   let body = "";
@@ -26,9 +33,17 @@ function sendJson(response, status, value) {
 }
 
 const server = createServer(async (request, response) => {
-  const url = new URL(request.url, `http://${request.headers.host ?? "localhost"}`);
+  const url = new URL(request.url, "http://localhost");
   if (request.method === "GET" && url.pathname === "/api/health") {
-    return sendJson(response, 200, { status: "ok" });
+    try { await store.health(); return sendJson(response, 200, { status: "ok" }); }
+    catch { return sendJson(response, 503, { status: "unavailable" }); }
+  }
+  if (request.method === "GET" && url.pathname === "/api/config") {
+    return sendJson(response, 200, { ownerAccessRequired: Boolean(ownerAccessCode), storage: store.mode });
+  }
+  if (request.method === "POST" && url.pathname === "/api/owner-access") {
+    if (!ownerAccessAllowed(request.headers.authorization, ownerAccessCode)) return sendJson(response, 403, { error: "Invalid owner access code." });
+    return sendJson(response, 200, { allowed: true });
   }
   if (request.method === "GET" && url.pathname === "/api/models") {
     try {
@@ -38,20 +53,23 @@ const server = createServer(async (request, response) => {
     }
   }
   if (request.method === "GET" && url.pathname === "/api/catalog") {
-    return sendJson(response, 200, { areas: AREAS, categories: CATEGORY_DISPLAY, listings: [...publishedListings, ...SEED_LISTINGS] });
+    try { return sendJson(response, 200, { areas: AREAS, categories: CATEGORY_DISPLAY, listings: [...await store.list(), ...SEED_LISTINGS] }); }
+    catch { return sendJson(response, 503, { error: "Catalog temporarily unavailable." }); }
   }
   if (request.method === "POST" && url.pathname === "/api/listings") {
+    if (!ownerAccessAllowed(request.headers.authorization, ownerAccessCode)) return sendJson(response, 403, { error: "Owner access required." });
     try {
       const listing = validatePublishedListing(await readJson(request));
       const category = CATEGORY_DISPLAY.find((entry) => entry.name === listing.category);
-      const published = { ...listing, id: randomUUID(), icon: category.icon, featured: false, sample: false };
-      publishedListings.unshift(published);
+      const published = await store.publish({ ...listing, icon: category.icon, featured: false, sample: false });
       return sendJson(response, 201, { listing: published });
     } catch (error) {
-      return sendJson(response, 400, { error: error instanceof Error ? error.message : "Could not publish listing." });
+      if (error instanceof SyntaxError || /must|Choose/.test(error?.message ?? "")) return sendJson(response, 400, { error: error.message });
+      return sendJson(response, 503, { error: "Could not save listing. Please try again." });
     }
   }
   if (request.method === "POST" && url.pathname === "/api/listings/draft") {
+    if (!ownerAccessAllowed(request.headers.authorization, ownerAccessCode)) return sendJson(response, 403, { error: "Owner access required." });
     try {
       const input = await readJson(request);
       const item = validateItem(input);
@@ -87,5 +105,7 @@ const server = createServer(async (request, response) => {
   return sendJson(response, 404, { error: "Not found." });
 });
 
-server.listen(port, "127.0.0.1", () => console.log(`LetsShareLah at http://localhost:${port}`));
+const host = process.env.HOST ?? (production ? "0.0.0.0" : "127.0.0.1");
+server.listen(port, host, () => console.log(`LetsShareLah listening on ${host}:${port} (${store.mode} storage)`));
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.close(async () => { await store.close(); process.exit(0); }));
 

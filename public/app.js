@@ -4,7 +4,7 @@ const categoryClasses = {
   "Tools & DIY": "visual-tools", "Baby & kids": "visual-baby",
   Electronics: "visual-electronics", "Home & living": "visual-home"
 };
-const state = { areas: {}, categories: [], listings: [], category: "all", query: "", location: null, account: null, pendingOwner: false, draft: null };
+const state = { areas: {}, categories: [], listings: [], category: "all", query: "", location: null, account: null, pendingOwner: false, draft: null, ownerAccessRequired: false, ownerAccessCode: "", storage: "memory" };
 const accountDialog = $("#account-dialog");
 const listingDialog = $("#listing-dialog");
 const detailDialog = $("#detail-dialog");
@@ -171,7 +171,13 @@ function fillCatalogSelectors() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("/api/catalog");
+    const [configResponse, response] = await Promise.all([fetch("/api/config"), fetch("/api/catalog")]);
+    if (configResponse.ok) {
+      const config = await configResponse.json();
+      state.ownerAccessRequired = config.ownerAccessRequired;
+      state.storage = config.storage;
+      updateOwnerCodeField();
+    }
     if (!response.ok) throw new Error("Catalog unavailable");
     const catalog = await response.json();
     state.areas = catalog.areas;
@@ -194,7 +200,21 @@ function openAccount(role = "renter", pendingOwner = false) {
   const form = $("#account-form");
   form.elements.role.value = role;
   form.elements.displayName.value = state.account?.name ?? "";
+  form.elements.ownerCode.value = "";
+  $("#account-error").hidden = true;
+  updateOwnerCodeField();
   accountDialog.showModal();
+}
+
+function updateOwnerCodeField() {
+  const ownerSelected = $("#account-form").elements.role.value === "owner";
+  const required = ownerSelected && state.ownerAccessRequired;
+  $("#owner-code-label").hidden = !required;
+  $("#account-form").elements.ownerCode.required = required;
+}
+
+function ownerHeaders() {
+  return { "content-type": "application/json", ...(state.ownerAccessCode ? { authorization: `Bearer ${state.ownerAccessCode}` } : {}) };
 }
 
 function openOwnerFlow() {
@@ -208,13 +228,28 @@ function openOwnerFlow() {
 $("#account-button").addEventListener("click", () => openAccount(state.account?.role ?? "renter"));
 $("#close-account-dialog").addEventListener("click", () => accountDialog.close());
 for (const selector of ["#list-button", "#hero-list-button", "#bottom-list-button", "#footer-list-button"]) $(selector).addEventListener("click", openOwnerFlow);
-$("#account-form").addEventListener("submit", (event) => {
+$("#account-form").addEventListener("change", updateOwnerCodeField);
+$("#account-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   if (!form.reportValidity()) return;
   const name = form.elements.displayName.value.trim();
   if (name.length < 2) return form.elements.displayName.setCustomValidity("Enter at least two characters.");
-  state.account = { name, role: form.elements.role.value };
+  const role = form.elements.role.value;
+  const code = role === "owner" ? form.elements.ownerCode.value.trim() : "";
+  $("#account-error").hidden = true;
+  if (role === "owner") {
+    try {
+      const response = await fetch("/api/owner-access", { method: "POST", headers: code ? { authorization: `Bearer ${code}` } : {} });
+      if (!response.ok) throw new Error("That owner invite code is not valid.");
+    } catch (error) {
+      $("#account-error").textContent = error.message ?? "Could not verify owner access.";
+      $("#account-error").hidden = false;
+      return;
+    }
+  }
+  state.ownerAccessCode = code;
+  state.account = { name, role };
   updateAccountButton();
   accountDialog.close();
   if (state.pendingOwner && state.account.role === "owner") openOwnerFlow();
@@ -269,7 +304,7 @@ $("#listing-form").addEventListener("submit", async (event) => {
   button.textContent = "Preparing draft…";
   try {
     const input = Object.fromEntries(new FormData(form).entries());
-    const response = await fetch("/api/listings/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+    const response = await fetch("/api/listings/draft", { method: "POST", headers: ownerHeaders(), body: JSON.stringify(input) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? "Could not create draft.");
     state.draft = { item: payload.item, listing: payload.listing };
@@ -307,7 +342,7 @@ $("#publish-button").addEventListener("click", async () => {
       condition: state.draft.item.condition, price: Number($("#draft-daily-price").value),
       owner: state.account.name, handoverChecklist: state.draft.listing.handoverChecklist
     };
-    const response = await fetch("/api/listings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(listing) });
+    const response = await fetch("/api/listings", { method: "POST", headers: ownerHeaders(), body: JSON.stringify(listing) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? "Could not publish listing.");
     state.listings.unshift(payload.listing);
@@ -322,7 +357,7 @@ $("#publish-button").addEventListener("click", async () => {
     listingDialog.close();
     $("#listing-form").reset();
     $("#explore").scrollIntoView({ behavior: "smooth" });
-    showToast("Your demo listing is live in this server session. It will disappear when the server restarts.");
+    showToast(state.storage === "atlas" ? "Your demo listing was saved to MongoDB Atlas." : "Your demo listing is live in this server session; it will disappear when the server restarts.");
   } catch (caught) {
     error.textContent = caught.message;
     error.hidden = false;

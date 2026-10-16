@@ -2,7 +2,7 @@
 
 **Rent more, own less.** LetsShareLah is a Singapore neighbourhood rental marketplace prototype. Browse items, search by category or keyword, filter by neighbourhood, and see approximate distances. Owners can create a listing with private, local AI writing help.
 
-> Status: local demo. The catalog begins with fictional sample listings. Owner listings are published only to the running server's memory and disappear when it restarts. Demo role profiles are **not real accounts**. There are no bookings, messages, payments, insurance or escrow. Price suggestions are estimates, not market data.
+> Status: deployable invite-only demo, not a production marketplace. The catalog begins with fictional sample listings. Listings persist only when MongoDB is configured; otherwise they disappear on restart. Demo role profiles are **not real accounts**. There are no bookings, messages, payments, insurance or escrow. Price suggestions are estimates, not market data.
 
 ## Why build it?
 
@@ -13,21 +13,22 @@ People often own equipment they use only occasionally. Renting nearby items can 
 - Browse a fictional Singapore rental catalog by category, keyword and neighbourhood.
 - Optionally use browser location permission to see demo items within 12 km; coordinates stay in the browser.
 - Open item detail cards showing condition, pickup neighbourhood, daily rate and owner name.
-- Enter renter or owner demo mode without creating an account.
+- Enter renter or owner demo mode without creating an account. A hosted owner must provide an invite code; this is a demo guard, not user authentication.
 - As an owner, enter an item, condition, replacement value and pickup neighbourhood, then edit and publish a demo listing.
 - Receive daily, weekly, monthly and deposit suggestions in SGD. A local Ollama model drafts the title and description; the handover checklist uses a standard, deterministic template. The UI selects a local model automatically, preferring Qwen3.5 0.8B when installed.
 - Fall back to a clearly labelled template draft if local AI is unavailable.
-- Run without cloud accounts, API keys, or application dependencies.
+- Run locally without cloud accounts or API keys. MongoDB Atlas is optional for local work and required for a durable hosted demo.
 
 AI drafts the listing copy for owner review. A deterministic pricing formula supplies transparent starting estimates and prevents a model response from silently changing prices. Owners can edit the daily rent before publishing. The formula is a prototype assumption, not market data.
 
 ## Quick start
 
-You need Node.js 20 or newer.
+You need Node.js 20.19 or newer.
 
 ```bash
 git clone https://github.com/punyaa/LetsShareLah.git
 cd LetsShareLah
+npm ci
 npm start
 ```
 
@@ -42,6 +43,16 @@ npm start
 
 The UI does not expose a model picker to renters. The server uses `OLLAMA_MODEL` if set, otherwise prefers an installed `qwen3.5:0.8b`, then another installed local model. If model generation fails, it returns a template draft and labels it as such. No API key is needed. The server only connects to Ollama on this computer. [Qwen3.5 0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) publishes its weights under Apache 2.0; model licenses differ, so check the exact model you choose.
 
+## Deployable demo with Atlas and Render
+
+The included [`render.yaml`](render.yaml) requests a **free** Render Node web service. It does not create a service or spend a promo credit by itself. Before deploying, create or select a MongoDB Atlas free/student cluster, add a database user, and configure network access for your deployment. Set `MONGODB_URI` and a random `OWNER_ACCESS_CODE` of at least 16 characters as **secret environment variables in Render**, not in Git. The app connects to the `letssharelah` database by default and creates the `listings` collection on first write. Use a dedicated database user with the minimum privileges you can configure. Review both providers' current free-tier limits and billing settings before pressing Deploy.
+
+Production mode (`NODE_ENV=production`) refuses to start without Atlas and the invite code. The code protects owner draft and publish endpoints from anonymous writes, but it is **not** a substitute for real accounts, rate limiting, moderation, or abuse protection. Share it only with trusted testers. Renter browsing stays public. Seed listings are fictional and are never inserted into your Atlas database.
+
+The hosted Render service does **not** run Ollama; its draft endpoint returns an explicitly labelled editable template. To demonstrate open-weight AI, run the local version with Ollama and record that flow separately. Do not describe a hosted template response as AI-generated. A hosted open-weight inference integration is a future step and should be enabled only after reviewing usage limits and costs.
+
+The free `.tech` domain is optional. Connect it only after a working deployed URL exists, and review renewal pricing before claiming it. The Backboard and Tinker credits are optional experiments, not required for the deployment above. This project does not claim their prize categories unless their technology is actually integrated and demonstrated.
+
 ## Development
 
 ```bash
@@ -53,12 +64,16 @@ The local server exposes:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/health` | Basic server health |
+| `GET /api/health` | Server and database readiness |
+| `GET /api/config` | Public demo configuration; never includes secrets |
 | `GET /api/models` | List installed local Ollama models |
 | `GET /api/catalog` | Get categories, neighbourhood coordinates and demo listings |
+| `POST /api/owner-access` | Verify the owner invite code |
 | `POST /api/listings/draft` | Generate prices and a local AI listing |
 | `POST /api/listings/draft?demo=1` | Generate a sample listing without Ollama |
-| `POST /api/listings` | Publish a validated listing to server memory |
+| `POST /api/listings` | Publish a validated listing to Atlas, or to local memory without Atlas |
+
+When `OWNER_ACCESS_CODE` is set, all owner POST endpoints require `Authorization: Bearer <code>`.
 
 Example request:
 
