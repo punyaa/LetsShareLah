@@ -28,7 +28,7 @@ cd LetsShareLah
 npm start
 ```
 
-Open <http://localhost:3000> and tick **Use sample draft** to test immediately.
+Open <http://localhost:3000> and tick **Preview with a sample draft instead of AI** to test immediately.
 
 For the local AI flow, install [Ollama](https://ollama.com/) and an open-weight model, then start the app:
 
@@ -50,7 +50,7 @@ The local server exposes:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/health` | Basic health and model configuration |
+| `GET /api/health` | Basic server health |
 | `GET /api/models` | List installed local Ollama models |
 | `POST /api/listings/draft` | Generate prices and a local AI listing |
 | `POST /api/listings/draft?demo=1` | Generate a sample listing without Ollama |
