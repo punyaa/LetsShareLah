@@ -1,0 +1,16 @@
+{
+  "name": "letssharelah",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI assisted listing and pricing for Singapore's peer to peer rentals",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

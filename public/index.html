@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Create a thoughtful rental listing and pricing guide for an item you already own." />
+    <title>LetsShareLah — earn from what you own</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <span class="eyebrow">LetsShareLah · Singapore</span>
+        <h1>Give your things<br /><em>a second job.</em></h1>
+        <p>Turn an unused item into a clear rental listing with a practical price guide and a simple handover plan.</p>
+      </header>
+      <div class="layout">
+        <section class="panel" aria-labelledby="form-title">
+          <h2 id="form-title">Tell us about your item</h2>
+          <form id="listing-form">
+            <div id="model-status" class="model-status">Checking local AI models…</div>
+            <label id="model-field" hidden>Local AI model<select name="model" id="model-select"></select></label>
+            <label>Item name<input name="name" required minlength="3" maxlength="80" placeholder="4-person camping tent" /></label>
+            <label>Category<select name="category"><option>Outdoor &amp; travel</option><option>Events &amp; parties</option><option>Tools &amp; DIY</option><option>Baby &amp; kids</option></select></label>
+            <label>Condition<input name="condition" required minlength="3" maxlength="200" placeholder="Excellent; used twice" /></label>
+            <label>Replacement value (SGD)<input name="replacementValue" type="number" min="1" max="100000" required placeholder="250" /></label>
+            <label>Nearest MRT or neighbourhood<input name="area" required minlength="2" maxlength="80" placeholder="Bishan" /></label>
+            <label class="check"><input name="demo" type="checkbox" /> Preview with a sample draft instead of AI</label>
+            <button type="submit">Create my listing <span aria-hidden="true">↗</span></button>
+          </form>
+        </section>
+        <section class="panel preview" aria-live="polite" aria-labelledby="result-title">
+          <div class="preview-top"><h2 id="result-title">Your listing</h2><span id="mode" class="pill">Ready when you are</span></div>
+          <div id="empty" class="empty"><div class="empty-icon" aria-hidden="true">✦</div><p>Your listing and price guide will appear here.</p></div>
+          <div id="result" hidden></div>
+          <p id="error" class="error" role="alert" hidden></p>
+        </section>
+      </div>
+      <footer>Price suggestions are estimates, not appraisals. No payments or bookings are processed.</footer>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
+
